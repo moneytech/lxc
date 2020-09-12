@@ -165,11 +165,8 @@ int detect_fs(struct lxc_storage *bdev, char *type, int len)
 	if (unshare(CLONE_NEWNS) < 0)
 		_exit(EXIT_FAILURE);
 
-	if (detect_shared_rootfs())
-		if (mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL)) {
-			SYSERROR("Failed to make / rslave");
-			ERROR("Continuing...");
-		}
+	if (detect_shared_rootfs() && mount(NULL, "/", NULL, MS_SLAVE | MS_REC, NULL))
+		SYSERROR("Failed to recursively turn root mount tree into dependent mount. Continuing...");
 
 	ret = mount_unknown_fs(srcdev, bdev->dest, bdev->mntopts);
 	if (ret < 0) {
@@ -315,9 +312,8 @@ int find_fstype_cb(char *buffer, void *data)
 		const char *target;
 		const char *options;
 	} *cbarg = data;
-
-	unsigned long mntflags;
-	char *mntdata;
+	unsigned long mntflags = 0;
+	char *mntdata = NULL;
 	char *fstype;
 
 	/* we don't try 'nodev' entries */
@@ -465,13 +461,12 @@ int storage_destroy_wrapper(void *data)
 {
 	struct lxc_conf *conf = data;
 
+	(void)lxc_setgroups(0, NULL);
+
 	if (setgid(0) < 0) {
 		SYSERROR("Failed to setgid to 0");
 		return -1;
 	}
-
-	if (setgroups(0, NULL) < 0)
-		SYSWARN("Failed to clear groups");
 
 	if (setuid(0) < 0) {
 		SYSERROR("Failed to setuid to 0");

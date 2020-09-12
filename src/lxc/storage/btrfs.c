@@ -192,8 +192,8 @@ bool btrfs_detect(const char *path)
 
 int btrfs_mount(struct lxc_storage *bdev)
 {
-	unsigned long mntflags;
-	char *mntdata;
+	unsigned long mntflags = 0;
+	char *mntdata = NULL;
 	const char *src;
 	int ret;
 
@@ -374,13 +374,12 @@ int btrfs_snapshot_wrapper(void *data)
 	const char *src;
 	struct rsync_data_char *arg = data;
 
+	(void)lxc_setgroups(0, NULL);
+
 	if (setgid(0) < 0) {
 		ERROR("Failed to setgid to 0");
 		return -1;
 	}
-
-	if (setgroups(0, NULL) < 0)
-		WARN("Failed to clear groups");
 
 	if (setuid(0) < 0) {
 		ERROR("Failed to setuid to 0");
@@ -731,7 +730,7 @@ static bool do_remove_btrfs_children(struct my_btrfs_tree *tree, u64 root_id,
 	return true;
 }
 
-static int btrfs_recursive_destroy(const char *path)
+static int btrfs_lxc_rm_rf(const char *path)
 {
 	u64 root_id;
 	int fd;
@@ -894,7 +893,7 @@ bool btrfs_try_remove_subvol(const char *path)
 	if (!btrfs_detect(path))
 		return false;
 
-	return btrfs_recursive_destroy(path) == 0;
+	return btrfs_lxc_rm_rf(path) == 0;
 }
 
 int btrfs_destroy(struct lxc_storage *orig)
@@ -903,11 +902,11 @@ int btrfs_destroy(struct lxc_storage *orig)
 
 	src = lxc_storage_get_path(orig->src, "btrfs");
 
-	return btrfs_recursive_destroy(src);
+	return btrfs_lxc_rm_rf(src);
 }
 
 int btrfs_create(struct lxc_storage *bdev, const char *dest, const char *n,
-		 struct bdev_specs *specs)
+		 struct bdev_specs *specs, const struct lxc_conf *conf)
 {
 	int ret;
 	size_t len;

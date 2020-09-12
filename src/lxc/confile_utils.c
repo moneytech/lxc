@@ -257,6 +257,7 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 		switch (netdev->type) {
 		case LXC_NET_VETH:
 			TRACE("type: veth");
+			TRACE("veth mode: %d", netdev->priv.veth_attr.mode);
 
 			if (netdev->priv.veth_attr.pair[0] != '\0')
 				TRACE("veth pair: %s",
@@ -269,6 +270,15 @@ void lxc_log_configured_netdevs(const struct lxc_conf *conf)
 			if (netdev->priv.veth_attr.ifindex > 0)
 				TRACE("host side ifindex for veth device: %d",
 				      netdev->priv.veth_attr.ifindex);
+
+			if (netdev->priv.veth_attr.vlan_id_set)
+				TRACE("veth vlan id: %d", netdev->priv.veth_attr.vlan_id);
+
+			lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.vlan_tagged_ids, next) {
+				unsigned short vlan_tagged_id = PTR_TO_USHORT(cur->elem);
+				TRACE("veth vlan tagged id: %u", vlan_tagged_id);
+			}
+
 			break;
 		case LXC_NET_MACVLAN:
 			TRACE("type: macvlan");
@@ -439,6 +449,11 @@ static void lxc_free_netdev(struct lxc_netdev *netdev)
 			free(cur->elem);
 			free(cur);
 		}
+
+		lxc_list_for_each_safe(cur, &netdev->priv.veth_attr.vlan_tagged_ids, next) {
+			lxc_list_del(cur);
+			free(cur);
+		}
 	}
 
 	free(netdev);
@@ -504,6 +519,18 @@ int lxc_veth_mode_to_flag(int *mode, const char *value)
 	}
 
 	return ret_set_errno(-1, EINVAL);
+}
+
+char *lxc_veth_flag_to_mode(int mode)
+{
+	for (size_t i = 0; i < sizeof(veth_mode) / sizeof(veth_mode[0]); i++) {
+		if (veth_mode[i].mode != mode)
+			continue;
+
+		return veth_mode[i].name;
+	}
+
+	return NULL;
 }
 
 static struct lxc_macvlan_mode {
@@ -647,6 +674,30 @@ int set_config_string_item_max(char **conf_item, const char *value, size_t max)
 int set_config_path_item(char **conf_item, const char *value)
 {
 	return set_config_string_item_max(conf_item, value, PATH_MAX);
+}
+
+int set_config_bool_item(bool *conf_item, const char *value, bool empty_conf_action)
+{
+	unsigned int val = 0;
+
+	if (lxc_config_value_empty(value)) {
+		*conf_item = empty_conf_action;
+		return 0;
+	}
+
+	if (lxc_safe_uint(value, &val) < 0)
+		return -EINVAL;
+
+	switch (val) {
+	case 0:
+		*conf_item = false;
+		return 0;
+	case 1:
+		*conf_item = true;
+		return 0;
+	}
+
+	return -EINVAL;
 }
 
 int config_ip_prefix(struct in_addr *addr)
